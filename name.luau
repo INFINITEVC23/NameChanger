@@ -70,5 +70,5 @@ end
 -- 5. TELEPORT SYNC
 if queue_on_teleport then
     -- This prepares the script to run as soon as you land in the 1v1/FFA
-    queue_on_teleport("loadstring(game:HttpGet('https://sirius.menu/rayfield'))(); print('Teleport Sync Active')")
+    queue_on_teleport("loadstring(game:HttpGet('https://raw.githubusercontent.com/INFINITEVC23/NameChanger/refs/heads/main/name.luau'))(); print('Teleport Sync Active')")
 end
