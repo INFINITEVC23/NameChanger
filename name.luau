@@ -1,18 +1,15 @@
--- 1. WAIT FOR ENGINE (Stops 'Ugc' errors)
+-- 1. ENGINE CHECK
 if not game:IsLoaded() then game.Loaded:Wait() end
 local Players = game:GetService("Players")
 local lp = Players.LocalPlayer or Players:GetPropertyChangedSignal("LocalPlayer"):Wait()
 local HttpService = game:GetService("HttpService")
 local fileName = "Rivals_Save_Data.json"
 
--- Capture the variable from your executor
-local showUI = false
-if ConfigGui ~= nil then
-    showUI = ConfigGui
-    _G.StoredConfigGui = ConfigGui -- Store for teleporting
-end
+-- Check the global variable from your loader
+local showUI = _G.ConfigGui
+if showUI == nil then showUI = true end -- Default to true if not specified
 
--- 2. LOCAL DATA CHECK
+-- 2. DATA LOADING
 local function getSavedData()
     if isfile(fileName) then
         local success, result = pcall(function() 
@@ -27,11 +24,26 @@ local savedData = getSavedData()
 local currentName = savedData.SavedName
 local currentID = savedData.SavedID
 
--- 3. BACKGROUND SPOOFER (Always active)
+-- 3. THE REFRESH FUNCTION (Forces Avatar to change)
+local function refreshAppearance(id)
+    if id and id ~= "" then
+        pcall(function()
+            lp.CharacterAppearanceId = tonumber(id)
+            if lp.Character then
+                local hum = lp.Character:FindFirstChildOfClass("Humanoid")
+                if hum then
+                    local desc = Players:GetHumanoidDescriptionFromUserId(tonumber(id))
+                    hum:ApplyDescription(desc)
+                end
+            end
+        end)
+    end
+end
+
+-- 4. PERMANENT BACKGROUND LOOP
 task.spawn(function()
     while true do
         pcall(function()
-            -- Spoof Name
             if currentName ~= "" then
                 lp.DisplayName = currentName
                 lp.Name = currentName
@@ -39,54 +51,47 @@ task.spawn(function()
                     lp.Character.Humanoid.DisplayName = currentName
                 end
             end
-            -- Spoof Avatar (UserID)
             if currentID ~= "" then
                 lp.CharacterAppearanceId = tonumber(currentID)
             end
         end)
-        task.wait(5) -- 5s delay prevents HTTP 429
+        task.wait(5)
     end
 end)
 
--- 4. INTERFACE (Only loads if showUI is true)
+-- 5. THE UI (Only triggers if showUI is true)
 if showUI then
     local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
     local Window = Rayfield:CreateWindow({
-       Name = "Rivals Identity System",
-       LoadingTitle = "Loading Config...",
-       ConfigurationSaving = {Enabled = false}
+        Name = "Rivals Identity",
+        LoadingTitle = "Setup Mode",
+        ConfigurationSaving = {Enabled = false}
     })
-
     local Tab = Window:CreateTab("Main", 4483362458)
 
     Tab:CreateInput({
-       Name = "Set Persistent Name",
-       PlaceholderText = "Type name...",
-       CurrentValue = currentName,
-       Callback = function(Text)
-          currentName = Text
-          writefile(fileName, HttpService:JSONEncode({SavedName = currentName, SavedID = currentID}))
-          lp.DisplayName = Text
-          lp.Name = Text
-       end,
+        Name = "Name Spoof",
+        PlaceholderText = "Enter Name...",
+        CurrentValue = currentName,
+        Callback = function(t)
+            currentName = t
+            writefile(fileName, HttpService:JSONEncode({SavedName = currentName, SavedID = currentID}))
+        end
     })
 
     Tab:CreateInput({
-       Name = "Set Avatar UserID",
-       PlaceholderText = "Enter UserID...",
-       CurrentValue = currentID,
-       Callback = function(Text)
-          currentID = Text
-          writefile(fileName, HttpService:JSONEncode({SavedName = currentName, SavedID = currentID}))
-          lp.CharacterAppearanceId = tonumber(Text)
-          Rayfield:Notify({Title = "Avatar Saved", Content = "Applies on next spawn.", Duration = 3})
-       end,
+        Name = "Avatar UserID",
+        PlaceholderText = "Enter ID...",
+        CurrentValue = currentID,
+        Callback = function(t)
+            currentID = t
+            writefile(fileName, HttpService:JSONEncode({SavedName = currentName, SavedID = currentID}))
+            refreshAppearance(t)
+        end
     })
 end
 
--- 5. TELEPORT AUTO-LOAD
+-- 6. TELEPORT SYNC (Keeps your 'Stealth' or 'Setup' choice)
 if queue_on_teleport then
-    -- This ensures that if you chose 'false' in the lobby, it stays 'false' in the 1v1
-    local syncVal = tostring(showUI)
-    queue_on_teleport("local ConfigGui = " .. syncVal .. "; loadstring(game:HttpGet('https://raw.githubusercontent.com/INFINITEVC23/NameChanger/refs/heads/main/name.luau'))()")
+    queue_on_teleport(string.format("_G.ConfigGui = %s; loadstring(game:HttpGet('https://raw.githubusercontent.com/INFINITEVC23/NameChanger/refs/heads/main/name.luau'))()", tostring(showUI)))
 end
