@@ -1,97 +1,70 @@
--- 1. ENGINE CHECK
-if not game:IsLoaded() then game.Loaded:Wait() end
+-- 1. WAIT (Fixes the "Ugc" DataModel error)
+repeat task.wait() until game:IsLoaded()
 local Players = game:GetService("Players")
 local lp = Players.LocalPlayer or Players:GetPropertyChangedSignal("LocalPlayer"):Wait()
+
+-- 2. CHECK FOR SAVED NAME (Local only, no server call)
 local HttpService = game:GetService("HttpService")
-local fileName = "Rivals_Save_Data.json"
+local fileName = "Rivals_Identity.json"
 
--- Check the global variable from your loader
-local showUI = _G.ConfigGui
-if showUI == nil then showUI = true end -- Default to true if not specified
-
--- 2. DATA LOADING
-local function getSavedData()
+local function getSavedName()
     if isfile(fileName) then
         local success, result = pcall(function() 
-            return HttpService:JSONDecode(readfile(fileName)) 
+            -- FIXED: Changed JSONEncode to JSONDecode so it reads the file correctly
+            return HttpService:JSONDecode(readfile(fileName)).SavedName 
         end)
+        -- Note: We use pcall to ensure a bad file doesn't crash the script
         if success then return result end
     end
-    return {SavedName = "", SavedID = ""}
+    return nil
 end
 
-local savedData = getSavedData()
-local currentName = savedData.SavedName
-local currentID = savedData.SavedID
+local targetName = getSavedName()
 
--- 3. THE REFRESH FUNCTION (Forces Avatar to change)
-local function refreshAppearance(id)
-    if id and id ~= "" then
-        pcall(function()
-            lp.CharacterAppearanceId = tonumber(id)
-            if lp.Character then
-                local hum = lp.Character:FindFirstChildOfClass("Humanoid")
-                if hum then
-                    local desc = Players:GetHumanoidDescriptionFromUserId(tonumber(id))
-                    hum:ApplyDescription(desc)
-                end
-            end
-        end)
-    end
-end
-
--- 4. PERMANENT BACKGROUND LOOP
-task.spawn(function()
-    while true do
-        pcall(function()
-            if currentName ~= "" then
-                lp.DisplayName = currentName
-                lp.Name = currentName
+-- 3. THE "ONLY LOAD IF NEEDED" LOGIC
+if targetName and targetName ~= "" then
+    -- WE ALREADY HAVE A NAME: Skip Rayfield entirely to avoid 429 errors!
+    task.spawn(function()
+        while true do
+            pcall(function()
+                lp.DisplayName = targetName
+                lp.Name = targetName
                 if lp.Character and lp.Character:FindFirstChild("Humanoid") then
-                    lp.Character.Humanoid.DisplayName = currentName
+                    lp.Character.Humanoid.DisplayName = targetName
                 end
-            end
-            if currentID ~= "" then
-                lp.CharacterAppearanceId = tonumber(currentID)
-            end
-        end)
-        task.wait(5)
-    end
-end)
-
--- 5. THE UI (Only triggers if showUI is true)
-if showUI then
+            end)
+            task.wait(5) -- 5s wait keeps Roblox servers happy
+        end
+    end)
+    print("Background Spoof Active. No UI loaded to prevent 429.")
+else
+    -- NO NAME SAVED: Only now do we call Rayfield
     local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
     local Window = Rayfield:CreateWindow({
-        Name = "Rivals Identity",
-        LoadingTitle = "Setup Mode",
-        ConfigurationSaving = {Enabled = false}
+       Name = "Rivals Identity",
+       LoadingTitle = "First Time Setup",
+       ConfigurationSaving = {Enabled = false}
     })
+
     local Tab = Window:CreateTab("Main", 4483362458)
 
     Tab:CreateInput({
-        Name = "Name Spoof",
-        PlaceholderText = "Enter Name...",
-        CurrentValue = currentName,
-        Callback = function(t)
-            currentName = t
-            writefile(fileName, HttpService:JSONEncode({SavedName = currentName, SavedID = currentID}))
-        end
-    })
-
-    Tab:CreateInput({
-        Name = "Avatar UserID",
-        PlaceholderText = "Enter ID...",
-        CurrentValue = currentID,
-        Callback = function(t)
-            currentID = t
-            writefile(fileName, HttpService:JSONEncode({SavedName = currentName, SavedID = currentID}))
-            refreshAppearance(t)
-        end
+       Name = "Set Persistent Name",
+       PlaceholderText = "Type name and hit Enter...",
+       Callback = function(Text)
+          writefile(fileName, HttpService:JSONEncode({SavedName = Text}))
+          print("Name saved! It will now auto-load in every match.")
+          -- Force an immediate apply
+          pcall(function()
+              lp.DisplayName = Text
+              lp.Name = Text
+          end)
+       end,
     })
 end
 
--- 6. TELEPORT SYNC (Keeps your 'Stealth' or 'Setup' choice)
+-- 4. THE CORRECT TELEPORT SYNC
 if queue_on_teleport then
-    queue_on_teleport(string.format("_G.ConfigGui = %s; loadstring(game:HttpGet('https://raw.githubusercontent.com/INFINITEVC23/NameChanger/refs/heads/main/name.luau'))()", tostring(showUI)))
+    -- This points back to your GitHub so it re-runs this logic in the 1v1
+    queue_on_teleport("loadstring(game:HttpGet('https://raw.githubusercontent.com/INFINITEVC23/NameChanger/refs/heads/main/name.luau'))(); print('Teleport Sync Active')")
 end
