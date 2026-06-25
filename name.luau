@@ -4,6 +4,11 @@ local Players = game:GetService("Players")
 local CoreGui = game:GetService("CoreGui")
 local RunService = game:GetService("RunService")
 local lp = Players.LocalPlayer or Players:GetPropertyChangedSignal("LocalPlayer"):Wait()
+local PlayerGui = lp:WaitForChild("PlayerGui")
+
+-- CRITICAL FIX: Save original credentials BEFORE properties change
+local ORIGINAL_USER = lp.Name
+local ORIGINAL_DISPLAY = lp.DisplayName
 
 -- 2. CHECK FOR SAVED DATA (Handles both custom names independently)
 local HttpService = game:GetService("HttpService")
@@ -23,21 +28,19 @@ local identity = getSavedIdentity()
 local targetName = identity and identity.SavedName
 local targetDisplay = identity and identity.SavedDisplay
 
--- === Pure Visual Replacement Logic (From 1KS Kawaii Name Changer) ===
+-- === Pure Visual Replacement Logic (Targets Both CoreGui and Game UI) ===
 local function applyReplacements(text, fakeUser, fakeDisplay)
     if not text or text == "" then return nil end
-    local origDisp, origUser = lp.DisplayName, lp.Name
     local changed = false
 
-    -- Handle DisplayName text swaps
-    if origDisp ~= "" and text:find(origDisp, 1, true) then
-        text = text:gsub(origDisp, fakeDisplay)
+    -- Matches using original cached profile data instead of volatile properties
+    if ORIGINAL_DISPLAY ~= "" and text:find(ORIGINAL_DISPLAY, 1, true) then
+        text = text:gsub(ORIGINAL_DISPLAY, fakeDisplay)
         changed = true
     end
 
-    -- Handle Username (@Name) text swaps
-    if origUser ~= "" and text:find(origUser, 1, true) then
-        text = text:gsub(origUser, fakeUser)
+    if ORIGINAL_USER ~= "" and text:find(ORIGINAL_USER, 1, true) then
+        text = text:gsub(ORIGINAL_USER, fakeUser)
         changed = true
     end
 
@@ -49,7 +52,7 @@ local function patchLabel(lbl, fakeUser, fakeDisplay)
     if newText then lbl.Text = newText end
 end
 
--- Active hierarchy watch loop for new CoreGui frames loading dynamically
+-- Active hierarchy watch loop for dynamically loaded UI additions
 local function watchGui(root, fakeUser, fakeDisplay)
     root.DescendantAdded:Connect(function(d)
         if d:IsA("TextLabel") or d:IsA("TextButton") then
@@ -69,10 +72,38 @@ local function watchGui(root, fakeUser, fakeDisplay)
     end
 end
 
+-- Clean function to update local profile and workspace character model names
+local function forcePhysicalRename(uName, dName)
+    pcall(function()
+        lp.Name = uName
+        lp.DisplayName = dName
+        
+        local char = lp.Character or workspace:FindFirstChild(ORIGINAL_USER) or workspace:FindFirstChild(uName)
+        if char then
+            if char.Name ~= uName then 
+                char.Name = uName 
+            end
+            local humanoid = char:FindFirstChildOfClass("Humanoid")
+            if humanoid and humanoid.DisplayName ~= dName then
+                humanoid.DisplayName = dName
+            end
+        end
+    end)
+end
+
 -- 3. THE "ONLY LOAD IF NEEDED" LOGIC
 if targetName and targetName ~= "" and targetDisplay and targetDisplay ~= "" then
-    -- IDENTITY SECURED: Run background visual listeners immediately
+    -- Apply background loop alterations
+    task.spawn(function()
+        while true do
+            forcePhysicalRename(targetName, targetDisplay)
+            task.wait(2)
+        end
+    end)
+
+    -- Hook up visual cleaners across CoreGui (Pause Menu) and PlayerGui (Rivals Match UI)
     watchGui(CoreGui, targetName, targetDisplay)
+    watchGui(PlayerGui, targetName, targetDisplay)
     
     RunService.RenderStepped:Connect(function()
         for _, lbl in ipairs(CoreGui:GetDescendants()) do
@@ -80,8 +111,13 @@ if targetName and targetName ~= "" and targetDisplay and targetDisplay ~= "" the
                 patchLabel(lbl, targetName, targetDisplay)
             end
         end
+        for _, lbl in ipairs(PlayerGui:GetDescendants()) do
+            if lbl:IsA("TextLabel") or lbl:IsA("TextButton") then
+                patchLabel(lbl, targetName, targetDisplay)
+            end
+        end
     end)
-    print("Background Visual Spoof Active. Names Locked In CoreGui.")
+    print("Background Hybrid Spoof Active. CoreGui and PlayerGui synchronized.")
 else
     -- MISSING CONFIGURATION: Launch complete dual-input Setup Utility
     local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
@@ -100,6 +136,7 @@ else
        Callback = function(Text)
           targetName = Text
           writefile(fileName, HttpService:JSONEncode({SavedName = targetName, SavedDisplay = targetDisplay or ""}))
+          forcePhysicalRename(targetName, targetDisplay or Text)
        end,
     })
 
@@ -110,18 +147,20 @@ else
        Callback = function(Text)
           targetDisplay = Text
           writefile(fileName, HttpService:JSONEncode({SavedName = targetName or "", SavedDisplay = targetDisplay}))
+          forcePhysicalRename(targetName or lp.Name, targetDisplay)
           
-          -- Initialize the real-time replacement immediately once settings are updated
           if targetName and targetName ~= "" then
               watchGui(CoreGui, targetName, targetDisplay)
+              watchGui(PlayerGui, targetName, targetDisplay)
               RunService.RenderStepped:Connect(function()
                   for _, lbl in ipairs(CoreGui:GetDescendants()) do
-                      if lbl:IsA("TextLabel") or lbl:IsA("TextButton") then
-                          patchLabel(lbl, targetName, targetDisplay)
-                      end
+                      if lbl:IsA("TextLabel") or lbl:IsA("TextButton") then patchLabel(lbl, targetName, targetDisplay) end
+                  end
+                  for _, lbl in ipairs(PlayerGui:GetDescendants()) do
+                      if lbl:IsA("TextLabel") or lbl:IsA("TextButton") then patchLabel(lbl, targetName, targetDisplay) end
                   end
               end)
-              print("Live CoreGui intercept initialized.")
+              print("Live Hybrid System initialized.")
           end
        end,
     })
