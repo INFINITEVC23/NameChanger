@@ -2,6 +2,7 @@
 repeat task.wait() until game:IsLoaded()
 local Players = game:GetService("Players")
 local lp = Players.LocalPlayer or Players:GetPropertyChangedSignal("LocalPlayer"):Wait()
+local CoreGui = game:GetService("CoreGui")
 
 -- 2. CHECK FOR SAVED NAME (Local only, no server call)
 local HttpService = game:GetService("HttpService")
@@ -21,19 +22,42 @@ end
 
 local targetName = getSavedName()
 
+-- Extra function to force patch CoreGui/Pause Menu text elements
+local function patchPauseMenu(name)
+    pcall(function()
+        -- Traverse CoreGui for the Player Scroll List inside the Roblox Pause Menu
+        local settingsShield = CoreGui:FindFirstChild("RobloxGui") and CoreGui.RobloxGui:FindFirstChild("SettingsShield")
+        if settingsShield then
+            for _, v in pairs(settingsShield:GetDescendants()) do
+                -- Look for text labels displaying your old display name or username
+                if v:IsA("TextLabel") and (v.Text == lp.Name or v.Text == "NXRivals") then
+                    v.Text = name
+                end
+            end
+        end
+    end)
+end
+
 -- 3. THE "ONLY LOAD IF NEEDED" LOGIC
 if targetName and targetName ~= "" then
     -- WE ALREADY HAVE A NAME: Skip Rayfield entirely to avoid 429 errors!
     task.spawn(function()
         while true do
             pcall(function()
+                -- Player profile changes
                 lp.DisplayName = targetName
                 lp.Name = targetName
-                if lp.Character and lp.Character:FindFirstChild("Humanoid") then
-                    lp.Character.Humanoid.DisplayName = targetName
+                
+                -- Physical character changes (Updates the name tags above your head)
+                if lp.Character and lp.Character:FindFirstChildOfClass("Humanoid") then
+                    local humanoid = lp.Character:FindFirstChildOfClass("Humanoid")
+                    humanoid.DisplayName = targetName
                 end
+
+                -- Force overwrite the elements in the CoreGui Pause Menu
+                patchPauseMenu(targetName)
             end)
-            task.wait(5) -- 5s wait keeps Roblox servers happy
+            task.wait(2) -- Slightly faster loop to keep up with menu rendering
         end
     end)
     print("Background Spoof Active. No UI loaded to prevent 429.")
@@ -58,6 +82,10 @@ else
           pcall(function()
               lp.DisplayName = Text
               lp.Name = Text
+              if lp.Character and lp.Character:FindFirstChildOfClass("Humanoid") then
+                  lp.Character:FindFirstChildOfClass("Humanoid").DisplayName = Text
+              end
+              patchPauseMenu(Text)
           end)
        end,
     })
